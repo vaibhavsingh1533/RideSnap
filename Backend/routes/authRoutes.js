@@ -70,16 +70,19 @@ router.post("/login", async (req, res) => {
       });
     }
 
-    const token = jwt.sign(
-      {
-        id: user._id,
-        role: user.role
-      },
-      process.env.JWT_SECRET,
-      {
-        expiresIn: "7d"
-      }
-    );
+  const token = jwt.sign(
+  {
+    id: user._id,
+    name: user.name,
+    role: user.role,
+    vehicleNumber: user.vehicleNumber,
+    cabType: user.cabType
+  },
+  process.env.JWT_SECRET,
+  {
+    expiresIn: "7d"
+  }
+);
 
     res.status(200).json({
       message: "Login successful",
