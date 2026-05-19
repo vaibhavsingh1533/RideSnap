@@ -62,11 +62,20 @@ const acceptRide = async (req, res) => {
     }
 
     ride.status = "accepted";
-    ride.driverName = "Rahul Sharma";
-    ride.vehicleNumber = "MP09AB1234";
-    ride.cabType = "Sedan";
+    ride.driverName = req.user.name;
+    ride.vehicleNumber = req.user.vehicleNumber || "Not Added";
+    ride.cabType = req.user.cabType || "Sedan";
 
     await ride.save();
+
+    const io = req.app.get("io");
+
+    if (io) {
+      io.to(ride.user.toString()).emit("rideStatusUpdate", {
+        message: "Driver accepted your ride",
+        ride
+      });
+    }
 
     res.status(200).json({
       message: "Ride accepted",
@@ -79,7 +88,6 @@ const acceptRide = async (req, res) => {
     });
   }
 };
-
 const completeRide = async (req, res) => {
   try {
     const { rideId, otp } = req.body;
