@@ -1,0 +1,39 @@
+const jwt = require('jsonwebtoken');
+const { User, DriverDetail } = require('../models');
+
+const protect = async (req, res, next) => {
+  let token;
+
+  if (
+    req.headers.authorization &&
+    req.headers.authorization.startsWith('Bearer')
+  ) {
+    try {
+      token = req.headers.authorization.split(' ')[1];
+
+      // Verify token
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'supersecretjwtkeyforridesnap');
+
+      // Get user from database
+      req.user = await User.findByPk(decoded.id, {
+        attributes: { exclude: ['password'] },
+        include: decoded.role === 'driver' ? [{ model: DriverDetail, as: 'driverDetail' }] : []
+      });
+
+      if (!req.user) {
+        return res.status(401).json({ message: 'Not authorized, user not found' });
+      }
+
+      next();
+    } catch (error) {
+      console.error(error);
+      return res.status(401).json({ message: 'Not authorized, token failed' });
+    }
+  }
+
+  if (!token) {
+    return res.status(401).json({ message: 'Not authorized, no token provided' });
+  }
+};
+
+module.exports = { protect };
