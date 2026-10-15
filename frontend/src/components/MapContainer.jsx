@@ -69,9 +69,13 @@ const MapContainer = ({
       }).setView([startLat, startLng], 12);
 
       // Add Premium Dark Matter Tiles
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-        maxZoom: 20
+    
+      // Load OpenStreetMap tiles
+      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
       }).addTo(mapRef.current);
+
 
       // Add Zoom Control at bottom right
       L.control.zoom({
