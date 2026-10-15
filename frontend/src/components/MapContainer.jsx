@@ -1,21 +1,25 @@
+
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
-
-// Import Leaflet assets
 import 'leaflet/dist/leaflet.css';
 
-// Fix Leaflet marker icons issue in React builds
+// Fix Leaflet marker icons in React builds
 delete L.Icon.Default.prototype._getIconUrl;
+
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconRetinaUrl:
+    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl:
+    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl:
+    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png'
 });
 
-// Custom Icons for premium feel
 const riderIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconUrl:
+    'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+  shadowUrl:
+    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
   iconSize: [25, 41],
   iconAnchor: [12, 41],
   popupAnchor: [1, -34],
@@ -23,8 +27,10 @@ const riderIcon = new L.Icon({
 });
 
 const driverIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-violet.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconUrl:
+    'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-violet.png',
+  shadowUrl:
+    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
   iconSize: [25, 41],
   iconAnchor: [12, 41],
   popupAnchor: [1, -34],
@@ -32,105 +38,136 @@ const driverIcon = new L.Icon({
 });
 
 const destinationIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconUrl:
+    'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+  shadowUrl:
+    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
   iconSize: [25, 41],
   iconAnchor: [12, 41],
   popupAnchor: [1, -34],
   shadowSize: [41, 41]
 });
 
-const MapContainer = ({ 
-  pickupCoords, 
-  dropoffCoords, 
-  driverCoords, 
-  rideStatus, 
-  onDriverCoordsChange 
+const MapContainer = ({
+  pickupCoords,
+  dropoffCoords,
+  driverCoords,
+  rideStatus,
+  onDriverCoordsChange
 }) => {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
-  
+
   const pickupMarkerRef = useRef(null);
   const dropoffMarkerRef = useRef(null);
   const driverMarkerRef = useRef(null);
   const routePolylineRef = useRef(null);
 
-  // Initialize Map
+  // Track the route for which the map has already been fitted.
+  const fittedRouteKeyRef = useRef(null);
+  const userMovedMapRef = useRef(false);
+
+  // Initialize map only once.
   useEffect(() => {
-    if (!mapRef.current && mapContainerRef.current) {
-      // Default coordinates: center around a neutral location (e.g., Delhi, IN or NYC, US)
-      // Let's check coordinates. If pickup exists, use it, else default.
-      const startLat = pickupCoords ? pickupCoords.lat : 28.6139;
-      const startLng = pickupCoords ? pickupCoords.lng : 77.2090;
+    if (!mapContainerRef.current || mapRef.current) return;
 
-      mapRef.current = L.map(mapContainerRef.current, {
-        zoomControl: false,
-        attributionControl: false
-      }).setView([startLat, startLng], 12);
+    const startLat = pickupCoords?.lat ?? 28.6139;
+    const startLng = pickupCoords?.lng ?? 77.209;
 
-      // Add Premium Dark Matter Tiles
-    
-      // Load OpenStreetMap tiles
-      L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; OpenStreetMap contributors'
-      }).addTo(mapRef.current);
+    const map = L.map(mapContainerRef.current, {
+      zoomControl: false,
+      attributionControl: true
+    }).setView([startLat, startLng], 12);
 
+    mapRef.current = map;
 
-      // Add Zoom Control at bottom right
-      L.control.zoom({
-        position: 'bottomright'
-      }).addTo(mapRef.current);
-    }
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    L.control.zoom({
+      position: 'bottomright'
+    }).addTo(map);
+
+    // Remember when the user manually changes the map view.
+    const handleUserMove = () => {
+      userMovedMapRef.current = true;
+    };
+
+    map.on('dragstart', handleUserMove);
+    map.on('zoomstart', handleUserMove);
+
+    // Save handlers so cleanup remains reliable.
+    map._rideSnapUserMoveHandler = handleUserMove;
+
+    // Leaflet sometimes needs a size refresh after the container renders.
+    const resizeTimer = setTimeout(() => {
+      if (mapRef.current) {
+        map.invalidateSize();
+      }
+    }, 100);
 
     return () => {
-      // Clean up map when component unmounts
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-      }
+      clearTimeout(resizeTimer);
+
+      map.off('dragstart', handleUserMove);
+      map.off('zoomstart', handleUserMove);
+
+      map.remove();
+      mapRef.current = null;
+
+      pickupMarkerRef.current = null;
+      dropoffMarkerRef.current = null;
+      driverMarkerRef.current = null;
+      routePolylineRef.current = null;
+      fittedRouteKeyRef.current = null;
+      userMovedMapRef.current = false;
     };
   }, []);
 
-  // Update Markers and Routes
+  // Update pickup, destination and route without resetting manual zoom.
   useEffect(() => {
-    if (!mapRef.current) return;
-
     const map = mapRef.current;
+    if (!map) return;
 
-    // 1. Handle Pickup Marker
+    // Pickup marker
     if (pickupCoords) {
+      const position = [pickupCoords.lat, pickupCoords.lng];
+
       if (pickupMarkerRef.current) {
-        pickupMarkerRef.current.setLatLng([pickupCoords.lat, pickupCoords.lng]);
+        pickupMarkerRef.current.setLatLng(position);
       } else {
-        pickupMarkerRef.current = L.marker([pickupCoords.lat, pickupCoords.lng], { icon: riderIcon })
+        pickupMarkerRef.current = L.marker(position, {
+          icon: riderIcon
+        })
           .addTo(map)
           .bindPopup('Pickup Location');
       }
-    } else {
-      if (pickupMarkerRef.current) {
-        map.removeLayer(pickupMarkerRef.current);
-        pickupMarkerRef.current = null;
-      }
+    } else if (pickupMarkerRef.current) {
+      map.removeLayer(pickupMarkerRef.current);
+      pickupMarkerRef.current = null;
     }
 
-    // 2. Handle Dropoff Marker
+    // Drop-off marker
     if (dropoffCoords) {
+      const position = [dropoffCoords.lat, dropoffCoords.lng];
+
       if (dropoffMarkerRef.current) {
-        dropoffMarkerRef.current.setLatLng([dropoffCoords.lat, dropoffCoords.lng]);
+        dropoffMarkerRef.current.setLatLng(position);
       } else {
-        dropoffMarkerRef.current = L.marker([dropoffCoords.lat, dropoffCoords.lng], { icon: destinationIcon })
+        dropoffMarkerRef.current = L.marker(position, {
+          icon: destinationIcon
+        })
           .addTo(map)
-          .bindPopup('Drop-off (Outstation Destination)');
+          .bindPopup('Drop-off Location');
       }
-    } else {
-      if (dropoffMarkerRef.current) {
-        map.removeLayer(dropoffMarkerRef.current);
-        dropoffMarkerRef.current = null;
-      }
+    } else if (dropoffMarkerRef.current) {
+      map.removeLayer(dropoffMarkerRef.current);
+      dropoffMarkerRef.current = null;
     }
 
-    // 3. Handle Route Polyline
+    // Draw a straight line between pickup and drop-off.
     if (pickupCoords && dropoffCoords) {
       const latlngs = [
         [pickupCoords.lat, pickupCoords.lng],
@@ -143,103 +180,127 @@ const MapContainer = ({
         routePolylineRef.current = L.polyline(latlngs, {
           color: '#6366f1',
           weight: 4,
-          opacity: 0.8,
+          opacity: 0.85,
           dashArray: '8, 8',
           lineCap: 'round'
         }).addTo(map);
       }
 
-      // Auto-fit bounds
-      const bounds = L.latLngBounds(latlngs);
-      if (driverCoords) {
-        bounds.extend([driverCoords.lat, driverCoords.lng]);
+      // Fit the map only once for each new pickup/drop-off pair.
+      const routeKey = [
+        pickupCoords.lat,
+        pickupCoords.lng,
+        dropoffCoords.lat,
+        dropoffCoords.lng
+      ].join(',');
+
+      if (fittedRouteKeyRef.current !== routeKey) {
+        // A genuinely new route should be fitted automatically.
+        userMovedMapRef.current = false;
+
+        const bounds = L.latLngBounds(latlngs);
+
+        if (driverCoords) {
+          bounds.extend([driverCoords.lat, driverCoords.lng]);
+        }
+
+        map.fitBounds(bounds, {
+          padding: [50, 50],
+          maxZoom: 14
+        });
+
+        fittedRouteKeyRef.current = routeKey;
       }
-      map.fitBounds(bounds, { padding: [50, 50] });
     } else {
       if (routePolylineRef.current) {
         map.removeLayer(routePolylineRef.current);
         routePolylineRef.current = null;
       }
-      
-      // Reset view to pickup or default
-      if (pickupCoords) {
+
+      fittedRouteKeyRef.current = null;
+
+      // Don't reset the view on every render.
+      if (pickupCoords && !userMovedMapRef.current) {
         map.setView([pickupCoords.lat, pickupCoords.lng], 12);
       }
     }
   }, [pickupCoords, dropoffCoords]);
 
-  // 4. Handle Driver Marker
+  // Update driver marker without changing the user's map zoom.
   useEffect(() => {
-    if (!mapRef.current) return;
     const map = mapRef.current;
+    if (!map) return;
 
     if (driverCoords) {
+      const position = [driverCoords.lat, driverCoords.lng];
+
       if (driverMarkerRef.current) {
-        driverMarkerRef.current.setLatLng([driverCoords.lat, driverCoords.lng]);
+        driverMarkerRef.current.setLatLng(position);
       } else {
-        driverMarkerRef.current = L.marker([driverCoords.lat, driverCoords.lng], { icon: driverIcon })
+        driverMarkerRef.current = L.marker(position, {
+          icon: driverIcon
+        })
           .addTo(map)
           .bindPopup('Driver Location');
       }
 
-      // If active ride, keep map centered or bounded
-      if (rideStatus && ['accepted', 'arrived', 'in_progress'].includes(rideStatus)) {
-        // bounds adjust
-        const points = [];
-        if (pickupCoords) points.push([pickupCoords.lat, pickupCoords.lng]);
-        if (dropoffCoords) points.push([dropoffCoords.lat, dropoffCoords.lng]);
-        points.push([driverCoords.lat, driverCoords.lng]);
-        
-        map.fitBounds(L.latLngBounds(points), { padding: [40, 40] });
-      }
-    } else {
-      if (driverMarkerRef.current) {
-        map.removeLayer(driverMarkerRef.current);
-        driverMarkerRef.current = null;
-      }
+      // Intentionally do not call fitBounds here.
+      // Driver updates must not reset the user's zoom.
+    } else if (driverMarkerRef.current) {
+      map.removeLayer(driverMarkerRef.current);
+      driverMarkerRef.current = null;
     }
-  }, [driverCoords, rideStatus]);
+  }, [driverCoords]);
 
-  // 5. Driver Simulation Path Engine
-  // If rideStatus is 'in_progress' and we are simulating on the driver panel,
-  // we update position periodically to complete the journey.
+  // Simulate driver movement for demo rides.
   useEffect(() => {
-    if (!rideStatus || !pickupCoords || !dropoffCoords || !onDriverCoordsChange) return;
+    if (
+      !rideStatus ||
+      !pickupCoords ||
+      !dropoffCoords ||
+      !onDriverCoordsChange
+    ) {
+      return;
+    }
 
     let interval;
+    let step = 0;
+
     if (rideStatus === 'accepted') {
-      // Driver moving to pickup
-      // Start driver slightly away from pickup and animate arrival
-      let step = 0;
       const steps = 15;
       const startLat = pickupCoords.lat + 0.015;
       const startLng = pickupCoords.lng - 0.015;
 
       interval = setInterval(() => {
         step++;
-        const currentLat = startLat + ((pickupCoords.lat - startLat) * (step / steps));
-        const currentLng = startLng + ((pickupCoords.lng - startLng) * (step / steps));
-        
-        onDriverCoordsChange({ lat: currentLat, lng: currentLng });
+
+        const progress = Math.min(step / steps, 1);
+
+        onDriverCoordsChange({
+          lat: startLat + (pickupCoords.lat - startLat) * progress,
+          lng: startLng + (pickupCoords.lng - startLng) * progress
+        });
 
         if (step >= steps) {
           clearInterval(interval);
         }
       }, 1000);
-
     } else if (rideStatus === 'in_progress') {
-      // Driver moving to dropoff
-      let step = 0;
-      const steps = 30; // Longer path simulation
-      const startLat = pickupCoords.lat;
-      const startLng = pickupCoords.lng;
+      const steps = 30;
 
       interval = setInterval(() => {
         step++;
-        const currentLat = startLat + ((dropoffCoords.lat - startLat) * (step / steps));
-        const currentLng = startLng + ((dropoffCoords.lng - startLng) * (step / steps));
 
-        onDriverCoordsChange({ lat: currentLat, lng: currentLng });
+        const progress = Math.min(step / steps, 1);
+
+        onDriverCoordsChange({
+          lat:
+            pickupCoords.lat +
+            (dropoffCoords.lat - pickupCoords.lat) * progress,
+          lng:
+            pickupCoords.lng +
+            (dropoffCoords.lng - pickupCoords.lng) * progress
+        });
 
         if (step >= steps) {
           clearInterval(interval);
@@ -250,39 +311,66 @@ const MapContainer = ({
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [rideStatus, pickupCoords, dropoffCoords]);
+  }, [
+    rideStatus,
+    pickupCoords,
+    dropoffCoords,
+    onDriverCoordsChange
+  ]);
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', borderRadius: '16px', overflow: 'hidden' }}>
-      <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
-      
-      {/* Premium overlay for maps */}
-      <div style={{
-        position: 'absolute',
-        top: '16px',
-        left: '16px',
-        zIndex: 1000,
-        pointerEvents: 'none'
-      }}>
-        <div className="glass-panel" style={{
-          padding: '8px 16px',
-          fontSize: '0.8rem',
-          fontWeight: 600,
-          color: 'var(--text-secondary)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px',
-          border: '1px solid rgba(255, 255, 255, 0.08)'
-        }}>
-          <span style={{
-            display: 'inline-block',
-            width: '8px',
-            height: '8px',
-            borderRadius: '50%',
-            backgroundColor: rideStatus ? 'var(--primary)' : 'var(--accent-success)',
-            boxShadow: '0 0 8px currentColor'
-          }} />
-          {rideStatus ? `Ride State: ${rideStatus.toUpperCase()}` : 'Simulation Active'}
+    <div
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100%',
+        minHeight: '300px',
+        borderRadius: '16px',
+        overflow: 'hidden'
+      }}
+    >
+      <div
+        ref={mapContainerRef}
+        style={{ width: '100%', height: '100%' }}
+      />
+
+      <div
+        style={{
+          position: 'absolute',
+          top: '16px',
+          left: '16px',
+          zIndex: 1000,
+          pointerEvents: 'none'
+        }}
+      >
+        <div
+          className="glass-panel"
+          style={{
+            padding: '8px 16px',
+            fontSize: '0.8rem',
+            fontWeight: 600,
+            color: 'var(--text-secondary)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            border: '1px solid rgba(255, 255, 255, 0.08)'
+          }}
+        >
+          <span
+            style={{
+              display: 'inline-block',
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              backgroundColor: rideStatus
+                ? 'var(--primary)'
+                : 'var(--accent-success)',
+              boxShadow: '0 0 8px currentColor'
+            }}
+          />
+          {rideStatus
+            ? `Ride State: ${rideStatus.toUpperCase()}`
+            : 'Simulation Active'}
         </div>
       </div>
     </div>
