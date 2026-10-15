@@ -1,4 +1,7 @@
+
 const { Sequelize } = require("sequelize");
+const fs = require("fs");
+const path = require("path");
 require("dotenv").config();
 
 const required = [
@@ -12,11 +15,22 @@ const missing = required.filter(
   (key) => !process.env[key]
 );
 
-if (missing.length) {
+if (missing.length > 0) {
   throw new Error(
-    `Missing database variables: ${missing.join(", ")}`
+    `Missing database environment variables: ${missing.join(", ")}`
   );
 }
+
+// Aiven CA certificate path
+const caPath = path.join(__dirname, "../certs/ca.pem");
+
+if (!fs.existsSync(caPath)) {
+  throw new Error(
+    `Aiven CA certificate not found at: ${caPath}`
+  );
+}
+
+const caCertificate = fs.readFileSync(caPath, "utf8");
 
 const sequelize = new Sequelize(
   process.env.DB_NAME,
@@ -30,7 +44,7 @@ const sequelize = new Sequelize(
 
     dialectOptions: {
       ssl: {
-        require: true,
+        ca: caCertificate,
         rejectUnauthorized: true
       },
       connectTimeout: 20000
